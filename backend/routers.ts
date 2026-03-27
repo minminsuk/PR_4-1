@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
-import { predictCarPrice } from "./model_predictor";
+import { predictCarPriceDnn } from "./dnn_predictor";
 
 // 가격 예측 입력 스키마
 const predictInputSchema = z.object({
@@ -14,11 +14,10 @@ const predictInputSchema = z.object({
   brand: z.string(),
   model: z.string(),
   spec_power: z.number().min(0),
+  spec_torque: z.number().min(0),
   spec_displacement: z.number().min(0),
   spec_efficiency: z.number().min(0),
-  insu_my_count: z.number().int().min(0),
-  insu_other_count: z.number().int().min(0),
-  insu_owner_count: z.number().int().min(0),
+  insu_count: z.number().int().min(0),
   option_count: z.number().int().min(0),
   opt_sunroof: z.number().int(),
   opt_navigation: z.number().int(),
@@ -35,7 +34,7 @@ const predictInputSchema = z.object({
 
 // 모델 기반 가격 예측 함수
 function predictPrice(inputData: z.infer<typeof predictInputSchema>) {
-  return predictCarPrice({
+  return predictCarPriceDnn({
     price: inputData.price,
     car_age: inputData.car_age,
     mileage: inputData.mileage,
@@ -43,11 +42,10 @@ function predictPrice(inputData: z.infer<typeof predictInputSchema>) {
     brand: inputData.brand,
     model: inputData.model,
     spec_power: inputData.spec_power,
+    spec_torque: inputData.spec_torque,
     spec_displacement: inputData.spec_displacement,
     spec_efficiency: inputData.spec_efficiency,
-    insu_my_count: inputData.insu_my_count,
-    insu_other_count: inputData.insu_other_count,
-    insu_owner_count: inputData.insu_owner_count,
+    insu_count: inputData.insu_count,
     option_count: inputData.option_count,
     opt_sunroof: inputData.opt_sunroof,
     opt_navigation: inputData.opt_navigation,
@@ -80,9 +78,9 @@ export const appRouter = router({
   car: router({
     predict: publicProcedure
       .input(predictInputSchema)
-      .mutation(({ input }) => {
+      .mutation(async ({ input }) => {
         try {
-          const result = predictPrice(input);
+          const result = await predictPrice(input);
           return result;
         } catch (error) {
           console.error('예측 오류:', error);

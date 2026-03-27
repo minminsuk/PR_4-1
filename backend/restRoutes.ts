@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { sdk } from "./_core/sdk";
-import { predictCarPrice } from "./model_predictor";
+import { predictCarPriceDnn } from "./dnn_predictor";
 
 const predictInputSchema = z.object({
   price: z.number().positive("가격은 양수여야 합니다"),
@@ -14,11 +14,10 @@ const predictInputSchema = z.object({
   brand: z.string(),
   model: z.string(),
   spec_power: z.number().min(0),
+  spec_torque: z.number().min(0),
   spec_displacement: z.number().min(0),
   spec_efficiency: z.number().min(0),
-  insu_my_count: z.number().int().min(0),
-  insu_other_count: z.number().int().min(0),
-  insu_owner_count: z.number().int().min(0),
+  insu_count: z.number().int().min(0),
   option_count: z.number().int().min(0),
   opt_sunroof: z.number().int(),
   opt_navigation: z.number().int(),
@@ -54,7 +53,7 @@ export function registerRestRoutes(app: Express) {
     res.json({ success: true } as const);
   });
 
-  router.post("/cars/predict", (req: Request, res: Response) => {
+  router.post("/cars/predict", async (req: Request, res: Response) => {
     const parsedInput = predictInputSchema.safeParse(req.body);
 
     if (!parsedInput.success) {
@@ -66,7 +65,7 @@ export function registerRestRoutes(app: Express) {
     }
 
     try {
-      const result = predictCarPrice(parsedInput.data);
+      const result = await predictCarPriceDnn(parsedInput.data);
       res.json(result);
     } catch (error) {
       console.error("예측 오류:", error);
