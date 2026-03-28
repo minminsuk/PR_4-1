@@ -23,19 +23,21 @@ class CarPricePredictor(nn.Module):
         total_emb_dim = sum([emb.embedding_dim for emb in self.embeddings])
         
         self.network = nn.Sequential(
-            nn.Linear(total_emb_dim + num_features, 128),
+            nn.Linear(total_emb_dim + num_features, 256),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Linear(256, 128),
+            nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Dropout(0.1),
             nn.Linear(64, 1)
         )
+        self.price_skip = nn.Linear(1, 1, bias=False)
         
     def forward(self, x_cat, x_num):
         embs = [emb(x_cat[:, i]) for i, emb in enumerate(self.embeddings)]
         x = torch.cat(embs + [x_num], dim=1)
-        return self.network(x)
+        price_feature = x_num[:, :1]
+        return self.network(x) + self.price_skip(price_feature)
 
 # ==========================================
 # 2. 평가 함수
@@ -53,7 +55,7 @@ def evaluate_model():
         return
 
     # 설정 및 객체 로드
-    with open(config_path, 'r') as f:
+    with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
     scaler = joblib.load(scaler_path)
     label_encoders = joblib.load(le_path)
@@ -61,6 +63,18 @@ def evaluate_model():
     # 데이터 로드 및 전처리
     df = pd.read_csv(data_path, encoding='utf-8-sig')
     y_true = df['price'].values
+
+    if 'price_segment' in config['categorical_features']:
+        q1, q2 = config.get('price_segment_bins', [df['price'].quantile(0.33), df['price'].quantile(0.66)])
+
+        def to_price_segment(price):
+            if price <= q1:
+                return 'low'
+            if price <= q2:
+                return 'mid'
+            return 'high'
+
+        df['price_segment'] = df['price'].apply(to_price_segment)
     
     X_cat_raw = df[config['categorical_features']]
     X_num_raw = df[config['numerical_features']]
@@ -84,7 +98,15 @@ def evaluate_model():
     # 예측
     with torch.no_grad():
         y_pred_log = model(X_cat_tensor, X_num_tensor).numpy().flatten()
-        y_pred = np.expm1(y_pred_log) # 로그 변환 역산
+        y_pred_raw = np.expm1(y_pred_log) # 로그 변환 역산
+
+    coeffs = config.get('calibration_coeffs')
+    if coeffs and len(coeffs) == 2:
+        a, c = coeffs
+        y_pred = a * y_pred_raw + c
+        y_pred = np.clip(y_pred, 1.0, None)
+    else:
+        y_pred = y_pred_raw
     
     # 성능 지표 계산
     mae = mean_absolute_error(y_true, y_pred)
