@@ -1,0 +1,74 @@
+﻿# 중고차 사기 탐지 및 시세 예측 시스템 (Car Fraud Detector) 종합 보고서
+
+본 보고서는 프로젝트의 전체 아키텍처(프론트엔드 및 백엔드), 사용된 기술 스택, 핵심 요구사항 구현 현황 및 서버 구동 방식에 대한 종합적인 기술 문서입니다.
+
+---
+
+## 1. 프로젝트 아키텍처 개요
+이 시스템은 Node.js 기반의 백엔드와 React 기반의 프론트엔드가 결합된 풀스택 웹 애플리케이션입니다. 
+가장 큰 특징은 Node.js 서버가 내부적으로 Python으로 구성된 딥러닝 모델(`best_model_v15.pth`)을 호출하여 데이터를 추론하는 **이종 언어 연동형 아키텍처**를 가지고 있다는 점입니다. 프론트엔드와 백엔드는 **REST API**를 사용하여 통신하며 명확한 엔드포인트 규격을 통해 데이터를 주고받습니다.
+
+---
+
+## 2. 사용된 기술 스택
+
+### 2.1 Backend (백엔드 / 서버)
+- **Runtime & Language:** Node.js, TypeScript
+- **API Engine:** REST API 아키텍처 기반 라우터 (Express 호환 로직)
+- **Authentication & Core:** OAuth 통합, 쿠키/세션 관리, 권한 분리 적용
+- **AI / ML Execution:** Python 3.x, PyTorch (`inference.py` 등을 child_process로 실행하여 예측 로직 처리)
+
+### 2.2 Frontend (프론트엔드 / 클라이언트)
+- **Framework & Language:** React, TypeScript
+- **Bundler:** Vite (빠른 HMR 및 빌드 제공)
+- **Styling UI:** Tailwind CSS, shadcn/ui 기반 컴포넌트(높은 접근성, 커스터마이징 가능)
+- **Routing & State:** wouter(경량 라우터 적용), React Context API
+- **Data Fetching:** Fetch API / Axios를 활용한 REST API 호출 (React Query 연동 가능)
+
+---
+
+## 3. 핵심 비즈니스 로직 및 제공 기능
+
+1. **차량 시세 및 사기 징후 예측 (핵심)**
+   - 사용자가 차량 종류, 연식, 마일리지 등 차량 제원 값을 입력하면, 프론트엔드가 백엔드의 REST API 엔드포인트로 예측 요청을 보냅니다.
+   - Node.js 서버는 이 값을 받아 Python 스크립트(`inference.py`)에 넘깁니다. 
+   - PyTorch 딥러닝 모델(`best_model_v15.pth`)을 통해 **적정 시장 가격**과 **사기 매물일 확률(Fraud Risk)** 을 추론해서 리턴합니다.
+2. **비교함 (Comparison) 기능**
+   - 예측한 여러 차량 매물의 데이터를 로컬 스토리지 및 Context 상태에 보관해 둡니다. 
+   - 사용자가 가격 대비 사기 위험도를 별도의 화면에서 나란히 놓고 한눈에 비교할 수 있도록 시각화하여 도와줍니다.
+3. **AI 추천 및 분석 챗봇 기능**
+   - 시스템 LLM 기능(`/_core/llm.ts`)이 내부 연결되어 있습니다. 사용자가 채팅 UI를 통해 중고차 구매 팁을 물어보거나 현재 차량에 대해 전문적인 조언을 구할 수 있습니다.
+4. **지도 (Map) 연동 기능**
+   - 차량 매물의 거래 위치 등의 정보를 제공할 때 시각적으로 알아보기 쉽도록 지도(Google Maps) 통합 컴포넌트가 활성화됩니다.
+5. **권한 제어 및 관리자 시스템**
+   - 관리자(admin) 권한과 일반 사용자(user) 구분이 있습니다.
+   - 비정상 동작을 막고 시스템 상황을 전송할 수 있는 관리자용 알림 기능(`notifyOwner`)과 백엔드의 인증/인가 미들웨어를 통해 관리자 전용 API를 안전하게 보호합니다.
+
+---
+
+## 4. 폴더 및 시스템 구조
+- `/frontend/`: 프론트엔드 코드(레이아웃, UI 컴포넌트, 훅 등)가 위치. Vite로 빌드.
+- `/backend/`: 서버 비즈니스 논리 및 REST 라우팅(`restRoutes.ts`, `routers.ts`, `_core/` 내 관리).
+- `/backend/inference.py`: Python 추론 스크립트로 Node.js의 `model_predictor.ts`가 이 스크립트를 `child_process`로 호출합니다.
+- `/drizzle/`: (현재는 사용하지 않는 레거시 DB 스키마 폴더)
+
+---
+
+## 5. 서버 구동 방식 (How to Run)
+
+본 애플리케이션 프론트엔드와 백엔드가 하나의 패키지로 관리되어 의존성 패키지가 루트에서 통합 구동 가능하도록 세팅되어 있습니다.
+
+1. **의존성 설치**
+   - 패키지 매니저는 npm 또는 pnpm을 사용합니다. 터미널에서 `npm install` (또는 pnpm install) 명령어 실행.
+   - `python` 실행 환경이 셋업되어야 하며 `torch` 및 `pandas` 등 관련 라이브러리 설치가 필요합니다.
+
+2. **개발 모드 구동 (Dev Server)**
+   ```bash
+   npm run dev
+   ```
+   - 위 명령어를 통해 `vite.config.ts` 기반으로 **프론트엔드 서버**와 **백엔드 서버**가 동시에 실행됩니다. (Monorepo 형태가 아니더라도 vite에 backend 시작을 결합함).
+   - 코드에 변경점이 생기면 양쪽 모두 Watch/HMR 모드로 자동 재시작됩니다.
+
+3. **환경 변수 (.env) 반영**
+   - 정상 동작을 위해서는 포트 정보, API Key(LLM 용도 등) 등 시크릿 데이터를 셋업 가이드에 맞게 시스템 환경 혹은 `.env` 파일에 기록해야 합니다.
+
